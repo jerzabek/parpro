@@ -4,6 +4,8 @@ import mpi.MPI;
  * N Dining philosophers problem task for Parallel programming laboratory exercise 01.
  * Faculty of Electrical Engineering and Computing 2023.
  *
+ * README WITH INSTRUCTIONS: https://github.com/jerzabek/parpro/tree/main/dz01
+ *
  * @author Ivan Jeržabek
  */
 public class ImplPhilosopher extends Philosopher {
