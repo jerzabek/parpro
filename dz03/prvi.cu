@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #define N 100000
+#define console printf
 
 __global__ void calcDistance(int num_cities, float *x, float *y, float *output) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
