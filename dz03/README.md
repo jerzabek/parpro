@@ -8,10 +8,15 @@ Run tasks:
 
 ```sh
 $ make prvi
-$ ./prvi
+$ ./prvi.exe
 ```
 
 ```sh
 $ make drugi
-$ ./drugi 100000000
+$ ./drugi.exe 100000000
+```
+
+```sh
+$ make treci
+$ ./treci/treci.exe 64 1000
 ```

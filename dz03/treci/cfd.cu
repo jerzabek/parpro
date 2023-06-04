@@ -7,6 +7,15 @@
 #include "cfdio.h"
 #include "jacobi.h"
 
+__global__ void copy_psitmp_to_psi_device(double *d_psitmp, double *d_psi, int m, int n) {
+  int i = blockIdx.y * blockDim.y + threadIdx.y;
+  int j = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i <= m && j <= n) {
+    d_psi[i * (m + 2) + j] = d_psitmp[i * (m + 2) + j];
+  }
+}
+
 int main(int argc, char **argv) {
   int printfreq = 1000;  // output frequency
   double error, bnorm;
@@ -74,6 +83,18 @@ int main(int argc, char **argv) {
   double *d_psi, *d_psitmp, *d_dsq;
   double h_dsq = 0.0;
 
+  // zero the psi array
+  for (i = 0; i < m + 2; i++) {
+    for (j = 0; j < n + 2; j++) {
+      psi[i * (m + 2) + j] = 0.0;
+    }
+  }
+  for (i = 0; i < m + 2; i++) {
+    for (j = 0; j < n + 2; j++) {
+      psitmp[i * (m + 2) + j] = 0.0;
+    }
+  }
+
   cudaMalloc(&d_psi, (m + 2) * (n + 2) * sizeof(double));
   cudaMalloc(&d_psitmp, (m + 2) * (n + 2) * sizeof(double));
   cudaMalloc(&d_dsq, sizeof(double));
@@ -81,13 +102,6 @@ int main(int argc, char **argv) {
   cudaMemcpy(d_psi, psi, (m + 2) * (n + 2) * sizeof(double), cudaMemcpyHostToDevice);
   cudaMemcpy(d_psitmp, psitmp, (m + 2) * (n + 2) * sizeof(double), cudaMemcpyHostToDevice);
   cudaMemcpy(d_dsq, &h_dsq, sizeof(double), cudaMemcpyHostToDevice);
-
-  // zero the psi array
-  for (i = 0; i < m + 2; i++) {
-    for (j = 0; j < n + 2; j++) {
-      psi[i * (m + 2) + j] = 0.0;
-    }
-  }
 
   // set the psi boundary conditions
   boundarypsi(psi, m, n, b, h, w);
@@ -110,43 +124,36 @@ int main(int argc, char **argv) {
   tstart = gettime();
 
   for (iter = 1; iter <= numiter; iter++) {
-    printf("Hi\n");
     // calculate psi for next iteration
     jacobistep<<<numBlocks, threadsPerBlock>>>(d_psitmp, d_psi, m, n);
-    printf("okay\n");
-
+    cudaDeviceSynchronize();
     // calculate current error if required
     if (checkerr || iter == numiter) {
       deltasq<<<numBlocks, threadsPerBlock>>>(d_dsq, d_psitmp, d_psi, m, n);
+
+      printf("finish deltasq ");
       cudaMemcpy(&h_dsq, d_dsq, sizeof(double), cudaMemcpyDeviceToHost);
-      printf("h_dsq = %g\n", h_dsq);
+      printf("h_dsq = %g ", h_dsq);
       error = sqrt(h_dsq);
       error = error / bnorm;
+      printf("Iteration %d, error = %g\n", iter, error);
     }
-    printf("asd\n");
 
-    // quit early if we have reached required tolerance
     if (checkerr) {
       if (error < tolerance) {
-        printf("Converged on iteration %d\n", iter);
+        printf("Converged on iteration %d ", iter);
         break;
       }
     }
-    printf("asd2\n");
 
-    // copy back
-    for (i = 1; i <= m; i++) {
-      for (j = 1; j <= n; j++) {
-        psi[i * (m + 2) + j] = psitmp[i * (m + 2) + j];
-      }
-    }
+    // cudaMemcpy(psitmp, d_psitmp, (m + 2) * (n + 2) * sizeof(double), cudaMemcpyDeviceToHost);
 
-    printf("asd3\n");
+    copy_psitmp_to_psi_device<<<numBlocks, threadsPerBlock>>>(d_psitmp, d_psi, m, n);
+
     // cudaMemcpy(d_psi, psi, (m + 2) * (n + 2) * sizeof(double), cudaMemcpyHostToDevice);
 
-    printf("Iteration %d, error = %g\n", iter, error);
+    // printf("Iteration %d, error = %g ", iter, error);
 
-    // print loop information
     if (iter % printfreq == 0) {
       if (!checkerr) {
         printf("Completed iteration %d\n", iter);
@@ -154,6 +161,7 @@ int main(int argc, char **argv) {
         printf("Completed iteration %d, error = %g\n", iter, error);
       }
     }
+
   }  // iter
 
   if (iter > numiter) iter = numiter;
@@ -172,6 +180,10 @@ int main(int argc, char **argv) {
   // output results
   // writedatafiles(psi,m,n, scalefactor);
   // writeplotfile(m,n,scalefactor);
+
+  cudaFree(d_psi);
+  cudaFree(d_psitmp);
+  cudaFree(d_dsq);
 
   // free un-needed arrays
   free(psi);
